@@ -1,0 +1,33 @@
+services:
+  vernemq:
+    image: vernemq/vernemq:latest
+    environment:
+      DOCKER_VERNEMQ_ACCEPT_EULA: "yes" # obligatoire pour l'image officielle
+      DOCKER_VERNEMQ_ALLOW_ANONYMOUS: "on" # dev only: no authentication
+    ports:
+      - "1883:1883" # MQTT
+      - "8888:8888" # page HTTP status
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379" # Redis
+
+  postgres:
+    image: postgres:alpine
+    environment:
+      POSTGRES_USER: bms
+      POSTGRES_PASSWORD: bms
+      POSTGRES_DB: bms
+    ports:
+      - "5432:5432" # PostgreSQL
+    volumes:
+      - pgdata:/var/lib/postgresql #named volume for persistent data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro #file, mounted as read-only, to initialize the database
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bms -d bms"]
+      interval: 5s
+      retries: 20
+    
+volumes:
+  pgdata:
