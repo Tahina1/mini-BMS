@@ -57,3 +57,48 @@ class S31(Device):
 
     def encode(self) -> bytes:
         return struct.pack(">HhH", self.battery_mv, round(self.temp_c * 10), round(self.hum_pct * 10))
+
+
+class CPL03(Device):
+    """Contact sec. 6 octets :
+    [0] flags : bit0 = contact fermé, bit1 = défaut   [1-3] compteur d'ouvertures (uint24)
+    [4-5] batterie mV (uint16)
+    """
+    model = "CPL03"
+
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.contact_state = 0
+        self.open_count = 0
+
+    def set_contact(self, state: int):
+        if state == 1 and self.contact_state == 0:
+            self.open_count += 1
+        self.contact_state = state
+
+    def encode(self) -> bytes:
+        flags = (self.contact_state & 0x01) | ((1 if self.fault else 0) << 1)
+        return bytes([flags]) + self.open_count.to_bytes(3, "big") + struct.pack(">H", self.battery_mv)
+
+
+class PF52(Device):
+    """Compteur de passage. 7 octets :
+    [0-1] entrées cumulées (uint16)  [2-3] sorties cumulées (uint16)
+    [4] défaut (0/1)  [5-6] batterie mV (uint16)
+    """
+    model = "PF52"
+
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.people_in = 0
+        self.people_out = 0
+
+    def step(self):
+        super().step()
+        self.people_in = (self.people_in + random.randint(0, 8)) % 65536   # un uint16 "reboucle" après 65535
+        inside = (self.people_in - self.people_out) % 65536
+        self.people_out = (self.people_out + random.randint(0, min(inside, 8))) % 65536
+
+    def encode(self) -> bytes:
+        # B = entier non signé sur 1 octet ; avec ">", aucun octet de remplissage n'est inséré
+        return struct.pack(">HHBH", self.people_in, self.people_out, 1 if self.fault else 0, self.battery_mv)

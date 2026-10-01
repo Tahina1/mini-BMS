@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 
 import paho.mqtt.client as mqtt
 
-from devices import S31
+from devices import CPL03, PF52, S31
 
 MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
@@ -62,12 +62,23 @@ class Gateway:
 def main():
     gw = Gateway("dlos8n-01")
     gw.connect()
+
     s31 = S31("A84041000000A001", "Salle électrique 1 - T/H", interval_s=10)
+    smoke = CPL03("A84041000000A002", "Salle électrique 1 - fumée", interval_s=15)
+    pf52 = PF52("A84041000000A003", "Entrée principale", interval_s=10)
+    devices = [s31, smoke, pf52]
+    # départs légèrement décalés, comme de vrais capteurs qui ne sont pas synchronisés
+    next_due = {d.dev_eui: time.time() + random.uniform(1, 3) for d in devices}
 
     while True:
-        s31.step()
-        gw.forward(s31, s31.encode())
-        time.sleep(s31.interval_s)
+        now = time.time()
+        for d in devices:
+            if now >= next_due[d.dev_eui]:
+                next_due[d.dev_eui] = now + d.interval_s
+                d.step()
+                if not d.silent:
+                    gw.forward(d, d.encode())
+        time.sleep(0.5)
 
 
 if __name__ == "__main__":
