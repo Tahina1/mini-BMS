@@ -28,6 +28,14 @@ services:
       test: ["CMD-SHELL", "pg_isready -U bms -d bms"]
       interval: 5s
       retries: 20
+
+  simulator:
+    build: ./simulator                 # construit l'image à partir de ./simulator/Dockerfile
+    environment:
+      MQTT_HOST: vernemq               # nom du service : dans Docker, "localhost" serait le conteneur lui-même
+      SCENARIO: ${SCENARIO:-normal}    # reprend la variable de ton terminal, "normal" par défaut
+    depends_on: [vernemq]              # démarre après vernemq
+    restart: unless-stopped            # relancé automatiquement s'il plante
     
 volumes:
   pgdata:
