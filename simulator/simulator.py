@@ -17,6 +17,7 @@ from devices import CPL03, PF52, S31
 MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 TENANT = os.getenv("TENANT", "ascencia")
+SCENARIOS = {s.strip() for s in os.getenv("SCENARIO", "normal").split(",")}
 
 
 class Gateway:
@@ -52,6 +53,8 @@ class Gateway:
             "rxInfo": [{"gatewayId": self.id, "rssi": random.randint(-110, -60), "snr": round(random.uniform(-5, 10), 1)}],
         }
         self.publish(uplink)
+        if "duplicate" in SCENARIOS:          # même trame captée par 2 gateways -> doublon
+            self.publish(uplink)
         print(f"[{device.model} {device.dev_eui}] fCnt={uplink['fCnt']} hex={payload.hex()}")
 
     def publish(self, message):
@@ -67,10 +70,49 @@ def main():
     smoke = CPL03("A84041000000A002", "Salle électrique 1 - fumée", interval_s=15)
     pf52 = PF52("A84041000000A003", "Entrée principale", interval_s=10)
     devices = [s31, smoke, pf52]
-    # départs légèrement décalés, comme de vrais capteurs qui ne sont pas synchronisés
     next_due = {d.dev_eui: time.time() + random.uniform(1, 3) for d in devices}
 
+    start = time.time()
+    done = set()   # événements de scénario déjà joués
+
+    def once(name, at_s):
+        """Vrai une seule fois, quand at_s secondes se sont écoulées depuis le démarrage."""
+        if (name, at_s) not in done and time.time() - start >= at_s:
+            done.add((name, at_s))
+            return True
+        return False
+
+    print(f"[sim] scénarios actifs : {sorted(SCENARIOS)}")
     while True:
+        # --- scénarios (timeline en secondes depuis le démarrage) ---
+        if "smoke" in SCENARIOS:
+            # un changement d'état est envoyé IMMÉDIATEMENT, sans attendre l'intervalle
+            if once("smoke-on", 20):
+                smoke.set_contact(1); print(">>> SCÉNARIO : fumée détectée"); gw.forward(smoke, smoke.encode())
+            if once("smoke-off", 60):
+                smoke.set_contact(0); print(">>> SCÉNARIO : fumée disparue"); gw.forward(smoke, smoke.encode())
+        if "heat" in SCENARIOS:
+            if once("heat-on", 20):
+                s31.heating = True; print(">>> SCÉNARIO : surchauffe salle électrique")
+            if once("heat-off", 90):
+                s31.heating = False; print(">>> SCÉNARIO : fin de surchauffe")
+        if "heartbeat_loss" in SCENARIOS:
+            if once("silent-on", 20):
+                s31.silent = True; print(">>> SCÉNARIO : le S31 se tait")
+            if once("silent-off", 90):
+                s31.silent = False; print(">>> SCÉNARIO : le S31 revient")
+        if "fault" in SCENARIOS and once("fault", 20):
+            pf52.fault = True; print(">>> SCÉNARIO : défaut PF52")
+        if "reset" in SCENARIOS and once("reset", 30):
+            s31.f_cnt = 0; print(">>> SCÉNARIO : reset du S31 (fCnt repart à 0)")
+        if "clock_skew" in SCENARIOS and once("skew", 20):
+            s31.clock_offset_s = 7200; print(">>> SCÉNARIO : horloge du S31 +2 h")
+        if "garbage" in SCENARIOS and once("garbage", 20):
+            print(">>> SCÉNARIO : messages corrompus")
+            gw.publish("ceci n'est pas du JSON")
+            gw.forward(s31, b"\x01\x02")          # trop court pour un S31
+
+        # --- émissions périodiques ---
         now = time.time()
         for d in devices:
             if now >= next_due[d.dev_eui]:
@@ -79,7 +121,6 @@ def main():
                 if not d.silent:
                     gw.forward(d, d.encode())
         time.sleep(0.5)
-
-
+        
 if __name__ == "__main__":
     main()
