@@ -1,0 +1,30 @@
+{
+  "$id": "envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tenant", "dev_eui", "model", "ts", "f_cnt", "gateway_id", "metrics"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "tenant":     { "type": "string" },
+    "dev_eui":    { "type": "string", "pattern": "^[0-9A-F]{16}$" },
+    "model":      { "type": "string" },
+    "ts":         { "type": "string", "format": "date-time" },
+    "f_cnt":      { "type": "integer" },
+    "gateway_id": { "type": "string" },
+    "rssi":       { "type": "integer" },
+    "snr":        { "type": "number" },
+    "metrics": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "value"],
+        "properties": {
+          "code":  { "type": "string" },
+          "value": { "type": "number" },
+          "unit":  { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}
