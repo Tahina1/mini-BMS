@@ -36,6 +36,14 @@ services:
       SCENARIO: ${SCENARIO:-normal}    # reprend la variable de ton terminal, "normal" par défaut
     depends_on: [vernemq]              # démarre après vernemq
     restart: unless-stopped            # relancé automatiquement s'il plante
+
+  normalizer:
+    build: ./normalizer
+    environment:
+      MQTT_URL: mqtt://vernemq:1883
+      REDIS_URL: redis://redis:6379
+    depends_on: [vernemq, redis]
+    restart: unless-stopped
     
 volumes:
   pgdata:
